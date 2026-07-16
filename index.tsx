@@ -144,6 +144,35 @@ export default definePlugin({
                 match: /\{width:t,height:n,maxWidth:i,maxHeight:r(?:,minWidth:a=0,minHeight:s=0)?\}=e[^;]*;/g,
                 replace: (match: string) => `${match}null==t&&(t=i,n=r);`
             }
+        },
+        {
+            // The above fixes the size-math functions, but attachments never even
+            // reach them: whatever gate decides "render as media vs generic file
+            // link" checks attachment.width/height truthiness directly, and null
+            // fails that check, so it falls back to a plain file link (as seen).
+            // Fix it at the source instead: the attachment normalizer that turns
+            // the raw server payload into the client's internal record.
+            find: "originalContentType:e.original_content_type,loadingState:e.loading_state",
+            replacement: {
+                match: /height:e\.height,width:e\.width,/,
+                replace: "height:e.height||360,width:e.width||640,"
+            }
+        },
+        {
+            // The native discord_voice engine speaks Discord's legacy raw-UDP
+            // IP-discovery + RTP protocol, which Harmony's rtc-worker doesn't
+            // implement (it only speaks WebRTC ICE/DTLS, same as the browser
+            // client uses). The engine picker tries NATIVE before WEBRTC and
+            // NATIVE always reports supported on desktop, so it always wins and
+            // voice connect times out. Swap the priority so WebRTC is tried
+            // first (still falls back to NATIVE if WebRTC somehow isn't
+            // supported, and to DUMMY after that).
+            find: "].find(e=>",
+            replacement: {
+                match: /\[(\w+\.\w+\.NATIVE),(\w+\.\w+\.WEBRTC)\]\.find\(e=>\w+\(e\)\.supported\(\)\)/,
+                replace: (match: string, native: string, webrtc: string) =>
+                    match.replace(`[${native},${webrtc}]`, `[${webrtc},${native}]`)
+            }
         }
     ]
 });
