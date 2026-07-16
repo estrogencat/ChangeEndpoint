@@ -39,7 +39,7 @@ Friendship endpoint<br>
 
 ### Partial
 
-VC joining (RTC timeout, spacebar issue)<br>
+VC joining (RTC timeout, spacebar issue, works on web discord client)<br>
 
 ### Broken
 
