@@ -39,6 +39,7 @@ CDN<br>
 Updating username/discriminator/bio/pronouns/PFP/banner<br>
 DMs<br>
 Friendship endpoint<br>
+Server rearranging (slightly slow to update if moved on another client)<br>
 
 ### Partial
 
@@ -49,7 +50,6 @@ Video playback (replaced discord's video player with the one your browser/client
 
 ### Broken
 
-Server rearranging<br>
 Status (text and online/idle/whatever)<br>
 Message latency (spacebar issue)<br>
 
