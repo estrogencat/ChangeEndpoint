@@ -8,7 +8,7 @@ This plugin is compatible with Spacebar and Harmony.
 ## Install
 
 Install a secondary client if you have a main client, as this plugin is set as required and cannot be disabled.<br>
-<sub><sup>This plugin was built and tested on canary ONLY, results may vary on stable and PTB</sub></sup>
+<sub><sup>cough cough [equibop with it built in](https://github.com/meownyaaa/Equibop/releases/tag/v3.2.1) also thisll overwrite any equibop install you currently have and i am not fixing it. ha.</sub></sup>
 
 ```bash
 mkdir -p src/userplugins/ChangeEndpoint
