@@ -10,6 +10,24 @@ export default definePlugin({
     required: true,
     settings,
 
+    start() {
+        if (typeof DiscordNative === "undefined") return;
+
+        const originalQuery = navigator.permissions.query.bind(navigator.permissions);
+        navigator.permissions.query = (descriptor: PermissionDescriptor) => {
+            if (descriptor.name === "camera" || descriptor.name === "microphone") {
+                return Promise.resolve({
+                    state: "granted",
+                    onchange: null,
+                    addEventListener() {},
+                    removeEventListener() {},
+                    dispatchEvent() { return true; }
+                } as unknown as PermissionStatus);
+            }
+            return originalQuery(descriptor);
+        };
+    },
+
     patches: [
         {
             find: "window.GLOBAL_ENV.API_ENDPOINT",
@@ -139,6 +157,20 @@ export default definePlugin({
             }
         },
         {
+            find: "loadingState:e.loading_state,",
+            replacement: {
+                match: /loadingState:e\.loading_state,/,
+                replace: "loadingState:e.loading_state??2,"
+            }
+        },
+        {
+            find: "let{width:t,height:n}=e;return t>0&&n>0",
+            replacement: {
+                match: /let\{width:t,height:n\}=e;return t>0&&n>0/,
+                replace: "let{width:t,height:n}=e;return(t??1)>0&&(n??1)>0"
+            }
+        },
+        {
             find: "].find(e=>E(e).supported())",
             replacement: {
                 match: /\[(\w+\.\w+\.NATIVE),(\w+\.\w+\.WEBRTC)\]\.find\(e=>\w+\(e\)\.supported\(\)\)/,
@@ -155,15 +187,55 @@ export default definePlugin({
             }
         },
         {
-            // Discord is rolling out a new experiment ("2026-07-windows-camera-mic-permissions")
-            // that adds a genuine Windows OS-level camera/mic permission check instead of
-            // always trusting the app. Since this isn't the officially-signed Discord.exe,
-            // that native check fails/denies ("Camera Access Is Denied" dialog). Force the
-            // pre-experiment behavior (always permit) regardless of experiment bucketing.
             find: "get platformAlwaysPermits(){return",
             replacement: {
                 match: /get platformAlwaysPermits\(\)\{return.*?\.checkPermissionsEnabled\}/,
                 replace: "get platformAlwaysPermits(){return!0}"
+            }
+        },
+        {
+            find: "originalItem:e,type:(0,",
+            all: true,
+            replacement: {
+                match: /type:\(0,(\w+\.\w+)\)\(([\w,]+)\)/,
+                replace: (match: string, fn: string, args: string) =>
+                    `type:(()=>{let r=(0,${fn})(${args});return"OTHER"===r&&null!=e.content_type?(e.content_type.startsWith("video/")?"VIDEO":e.content_type.startsWith("image/")?"IMAGE":e.content_type.startsWith("audio/")?"AUDIO":r):r})()`
+            }
+        },
+        {
+            find: 'startsWith("blob:"))return e;let n=',
+            replacement: {
+                match: /(let n=\w+\.\w+\.toURLSafe\(e\);return null==n\?null:\()n\.searchParams\.set\("format","webp"\)/,
+                replace: '$1/\\.(mov|mp4|webm|mkv|avi|mpg|mpeg)$/i.test(n.pathname)||n.searchParams.set("format","webp")'
+            }
+        },
+        {
+            find: 'case"VIDEO":case"CLIP":return(0,',
+            replacement: {
+                match: /case"VIDEO":case"CLIP":return\(0,(\w+\.\w+)\)\(\w+,\{item:(\w+),[^}]*\}\)/,
+                replace: (match: string, jsxfn: string, item: string) =>
+                    `case"VIDEO":case"CLIP":return(0,${jsxfn})("video",{src:${item}.originalItem?.url??${item}.downloadUrl,controls:!0,preload:"metadata",style:{maxWidth:_||640,maxHeight:D||400,width:"100%"}})`
+            }
+        },
+        {
+            find: "hasPermissionCore(e,t){return this.asyncify(",
+            replacement: {
+                match: /hasPermissionCore\(e,t\)\{return this\.asyncify\([^}]*\)\}/,
+                replace: "hasPermissionCore(e,t){return Promise.resolve(!0)}"
+            }
+        },
+        {
+            find: "requestPermissionCore(e,t){return this.asyncify(",
+            replacement: {
+                match: /requestPermissionCore\(e,t\)\{return this\.asyncify\([^}]*\)\}/,
+                replace: "requestPermissionCore(e,t){return Promise.resolve(!0)}"
+            }
+        },
+        {
+            find: "didHavePermission(e){return this.storage.hasPermission(e)}",
+            replacement: {
+                match: /didHavePermission\(e\)\{return this\.storage\.hasPermission\(e\)\}/,
+                replace: "didHavePermission(e){return!0}"
             }
         }
     ]
