@@ -1,5 +1,7 @@
 # ChangeEndpoint (Vencord/Equicord userplugin)
 
+## I AM NOT RESPONSIBLE FOR ANY ACCOUNT BANS USING THIS PLUGIN, YOU'D HAVE TO PURPOSEFULLY SET THE BACKEND TO DISCORDS TO GET ONE ANYWAY!
+
 Redirects Discord's REST API, CDN, and Gateway traffic to **fermi.chat's**
 Harmony backend (`harmony.melodychat.org`) by default, which is changeable in plugin settings, plus a set of janky fixes for
 things that broke or misbehaved.<br>
