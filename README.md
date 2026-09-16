@@ -3,7 +3,7 @@
 ## I AM NOT RESPONSIBLE FOR ANY ACCOUNT BANS USING THIS PLUGIN, YOU'D HAVE TO PURPOSEFULLY SET THE BACKEND TO DISCORDS TO GET ONE ANYWAY!
 
 Redirects Discord's REST API, CDN, and Gateway traffic to **fermi.chat's**
-Harmony backend (`harmony.melodychat.org`) by default, which is changeable in plugin settings, plus a set of janky fixes for
+Spacebar backend by default, which is changeable in plugin settings, plus a set of janky fixes for
 things that broke or misbehaved.<br>
 This plugin is compatible with Spacebar and Harmony.
 
@@ -26,7 +26,7 @@ Fully quit Discord (tray icon, not just closing the window) and relaunch.
 
 ## What's confirmed working
 
-VC on website client<br>
+VC on web based clients<br>
 Messaging<br>
 Emojis/stickers<br>
 Registering<br>
@@ -37,7 +37,7 @@ Server joining<br>
 Channel creation<br>
 Uploading media<br>
 CDN<br>
-Updating username/discriminator/bio/pronouns/PFP/banner<br>
+Updating guild/user settings<br>
 Status<br>
 Rich presence<br>
 DMs<br>
