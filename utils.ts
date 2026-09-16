@@ -1,44 +1,54 @@
+/*
+ * Vencord, a Discord client mod
+ * Copyright (c) 2025 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+import { CustomServer, PREDEFINED_SERVERS } from "./servers";
 import { settings } from "./settings";
-// to change the backend urls from the source itself, edit these
-const HARMONY_API_ENDPOINT = "//api.harmony.melodychat.org/api";
-const HARMONY_CDN_HOST = "cdn.harmony.melodychat.org";
-const HARMONY_GATEWAY_ENDPOINT = "wss://gateway.harmony.melodychat.org";
-const HARMONY_MEDIA_PROXY_ENDPOINT = "//cdn.harmony.melodychat.org";
 
-function isSimple(): boolean {
-    return settings.store.backend === "custom-simple";
-}
-function isAdvanced(): boolean {
-    return settings.store.backend === "custom-advanced";
+function activeCustomServer(): CustomServer | undefined {
+    return settings.store.customServers.find(s => s.id === settings.store.backend);
 }
 
-function getSimpleHost(): string {
-    return settings.store.customBackendHost
+function predefinedHost(): string | null {
+    return PREDEFINED_SERVERS.find(s => s.id === settings.store.backend)?.host ?? null;
+}
+
+export function simplifyHost(host: string): string {
+    return host
         .trim()
-        .replace(/^https?:\/\//, "")
-        .replace(/\/+$/, "");
+        .replace(/^\w+:\/\//, "")
+        .replace(/\/.*$/, "");
 }
 
-export function getApiEndpoint(): string {
-    if (isAdvanced() && settings.store.customApiEndpoint) return settings.store.customApiEndpoint.trim();
-    if (isSimple() && settings.store.customBackendHost) return `//api.${getSimpleHost()}/api`;
-    return HARMONY_API_ENDPOINT;
+// fix some bullshit where itll go https://https//*server url* lol
+const HOST_ONLY_ADVANCED_FIELDS = new Set<keyof CustomServer>(["cdnHost", "mediaProxyEndpoint"]);
+
+function resolveEndpoint(advancedField: keyof CustomServer, build: (host: string) => string): string | null {
+    const predefined = predefinedHost();
+    if (predefined) return build(predefined);
+
+    const custom = activeCustomServer();
+    if (!custom) return null;
+
+    if (custom.type === "advanced") {
+        let value = (custom[advancedField] as string | undefined)?.trim();
+        if (value && HOST_ONLY_ADVANCED_FIELDS.has(advancedField)) value = simplifyHost(value);
+        return value || null;
+    }
+
+    return custom.host?.trim() ? build(simplifyHost(custom.host)) : null;
 }
 
-export function getCdnHost(): string {
-    if (isAdvanced() && settings.store.customCdnHost) return settings.store.customCdnHost.trim();
-    if (isSimple() && settings.store.customBackendHost) return `cdn.${getSimpleHost()}`;
-    return HARMONY_CDN_HOST;
-}
+export const getApiEndpoint = () =>
+    resolveEndpoint("apiEndpoint", host => `//api.${host}/api`);
 
-export function getGatewayEndpoint(): string {
-    if (isAdvanced() && settings.store.customGatewayEndpoint) return settings.store.customGatewayEndpoint.trim();
-    if (isSimple() && settings.store.customBackendHost) return `wss://gateway.${getSimpleHost()}`;
-    return HARMONY_GATEWAY_ENDPOINT;
-}
+export const getCdnHost = () =>
+    resolveEndpoint("cdnHost", host => `cdn.${host}`);
 
-export function getMediaProxyEndpoint(): string {
-    if (isAdvanced() && settings.store.customMediaProxyEndpoint) return settings.store.customMediaProxyEndpoint.trim();
-    if (isSimple() && settings.store.customBackendHost) return `//cdn.${getSimpleHost()}`;
-    return HARMONY_MEDIA_PROXY_ENDPOINT;
-}
+export const getGatewayEndpoint = () =>
+    resolveEndpoint("gatewayEndpoint", host => `wss://gateway.${host}`);
+
+export const getMediaProxyEndpoint = () =>
+    resolveEndpoint("mediaProxyEndpoint", host => `//cdn.${host}`);

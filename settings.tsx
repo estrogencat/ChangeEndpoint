@@ -1,20 +1,92 @@
-import { definePluginSettings } from "@api/Settings";
-import { OptionType } from "@utils/types";
+/*
+ * Vencord, a Discord client mod
+ * Copyright (c) 2025 Vendicated and contributors
+ * SPDX-License-Identifier: GPL-3.0-or-later
+ */
+
+import { definePluginSettings, Settings } from "@api/Settings";
 import { localStorage } from "@utils/localStorage";
+import { Logger } from "@utils/Logger";
+import { OptionType } from "@utils/types";
 import { Alerts, Button, Toasts } from "@webpack/common";
+
+const logger = new Logger("ChangeEndpoint");
+
+export function migrateVideoPlayerSetting() {
+    const s = Settings.plugins.ChangeEndpoint as { useNativeVideoPlayer?: boolean; useChromiumVideoPlayer?: boolean; };
+    if (Object.hasOwn(s, "useNativeVideoPlayer") && !Object.hasOwn(s, "useChromiumVideoPlayer")) {
+        s.useChromiumVideoPlayer = !s.useNativeVideoPlayer;
+        delete s.useNativeVideoPlayer;
+    }
+}
+
+export function migrateDefaultBackend() {
+    const s = Settings.plugins.ChangeEndpoint as { backend?: string; migratedDefaultBackend?: boolean; };
+    if (!s.migratedDefaultBackend) {
+        if (!Object.hasOwn(s, "backend") || s.backend === "harmony") {
+            s.backend = "spacebar";
+        }
+        s.migratedDefaultBackend = true;
+    }
+}
+
+export function migrateCustomServers() {
+    const s = Settings.plugins.ChangeEndpoint as {
+        backend?: string;
+        customBackendHost?: string;
+        customApiEndpoint?: string;
+        customCdnHost?: string;
+        customGatewayEndpoint?: string;
+        customMediaProxyEndpoint?: string;
+        customServers?: import("./servers").CustomServer[];
+        migratedCustomServers?: boolean;
+    };
+    if (s.migratedCustomServers) return;
+    s.migratedCustomServers = true;
+
+    const hadLegacyCustom = s.customBackendHost || s.customApiEndpoint || s.customCdnHost
+        || s.customGatewayEndpoint || s.customMediaProxyEndpoint;
+    if (!hadLegacyCustom) return;
+
+    const wasAdvanced = s.backend === "custom-advanced";
+    const id = `custom-${Date.now().toString(36)}`;
+    s.customServers = [
+        ...(s.customServers ?? []),
+        {
+            id,
+            name: "Custom Server",
+            type: wasAdvanced ? "advanced" : "simple",
+            host: s.customBackendHost || undefined,
+            apiEndpoint: s.customApiEndpoint || undefined,
+            cdnHost: s.customCdnHost || undefined,
+            gatewayEndpoint: s.customGatewayEndpoint || undefined,
+            mediaProxyEndpoint: s.customMediaProxyEndpoint || undefined
+        }
+    ];
+
+    if (s.backend === "custom-simple" || s.backend === "custom-advanced") {
+        s.backend = id;
+    }
+
+    delete s.customBackendHost;
+    delete s.customApiEndpoint;
+    delete s.customCdnHost;
+    delete s.customGatewayEndpoint;
+    delete s.customMediaProxyEndpoint;
+}
+
+const isOurs = (name: string) => name.startsWith("Vencord") || name.startsWith("Equicord");
 
 function clearCachedLoginData() {
     try {
-        localStorage.clear();
+        for (const key of Object.keys(localStorage)) {
+            if (!isOurs(key)) localStorage.removeItem(key);
+        }
         window.sessionStorage?.clear();
 
-        if (window.indexedDB?.databases) {
-            window.indexedDB.databases().then(dbs => {
-                for (const db of dbs) {
-                    if (db.name) indexedDB.deleteDatabase(db.name);
-                }
-            }).catch(e => console.error("[ChangeEndpoint] Failed to enumerate IndexedDB databases", e));
-        }
+        window.indexedDB?.databases?.()
+            .then(dbs => dbs.forEach(db => db.name && !isOurs(db.name) && indexedDB.deleteDatabase(db.name)))
+            .catch(e => logger.error("Failed to enumerate IndexedDB databases", e));
 
         for (const cookie of document.cookie.split(";")) {
             const name = cookie.split("=")[0]?.trim();
@@ -23,108 +95,80 @@ function clearCachedLoginData() {
 
         Toasts.show({
             id: Toasts.genId(),
-            message: "Cleared cached login data. Fully quit Discord (tray icon, not just the window) and relaunch it now.",
+            message: "Cleared cached login data",
             type: Toasts.Type.SUCCESS
         });
     } catch (e) {
-        console.error("[ChangeEndpoint] Failed to clear cached data", e);
+        logger.error("Failed to clear cached data", e);
         Toasts.show({
             id: Toasts.genId(),
-            message: "Failed to clear cached data - check the console.",
+            message: "Failed to clear cached data.",
             type: Toasts.Type.FAILURE
         });
     }
 }
 
-function ClearCacheButton() {
-    return (
-        <Button
-            color={Button.Colors.RED}
-            onClick={() => {
-                Alerts.show({
-                    title: "Clear cached login data?",
-                    body: "This clears localStorage, sessionStorage, and IndexedDB for this client. " +
-                        "You'll need to fully quit Discord (tray icon, not just close the window) and relaunch it " +
-                        "afterward. Do this after switching backends if the client freezes at the Discord logo. Continue?",
-                    confirmText: "Clear data",
-                    cancelText: "Cancel",
-                    confirmColor: Button.Colors.RED,
-                    onConfirm: clearCachedLoginData
-                });
-            }}
-        >
-            Clear Cached Login Data
-        </Button>
-    );
-}
-
-function isSimple() {
-    return settings.store.backend === "custom-simple";
-}
-function isAdvanced() {
-    return settings.store.backend === "custom-advanced";
-}
+const ClearCacheButton = () => (
+    <Button
+        color={Button.Colors.RED}
+        onClick={() => Alerts.show({
+            title: "Clear cached login data?",
+            body: "This clears Discord's localStorage, sessionStorage, and IndexedDB for this client. " +
+                "Your Equicord settings and plugin data are kept. " +
+                "You'll need to fully quit Discord, or back out of here afterwards and hit Restart at the " +
+                "top of the plugins page.",
+            confirmText: "Clear data",
+            cancelText: "Cancel",
+            confirmColor: Button.Colors.RED,
+            onConfirm: clearCachedLoginData
+        })}
+    >
+        Clear Cached Login Data
+    </Button>
+);
 
 export const settings = definePluginSettings({
     backend: {
-        type: OptionType.SELECT,
+        type: OptionType.CUSTOM,
         description: "Backend to connect to",
-        restartNeeded: true,
-        options: [
-            { label: "Harmony (fermi.chat)", value: "harmony", default: true },
-            { label: "Custom (Simplified)", value: "custom-simple" },
-            { label: "Custom (Advanced, untested)", value: "custom-advanced" }
-        ]
+        default: "spacebar"
     },
-    customBackendHost: {
-        type: OptionType.STRING,
-        description: "Only used with Custom (Simplified). Just the bare host, no scheme, no trailing slash " +
-            "(e.g. \"rory.server.spacebar.chat\"). To find this: open DevTools (Ctrl+Shift+I) on the instance's " +
-            "web client, go to the Network tab, log in or reload, and look for a request whose domain starts " +
-            "with \"api.\" - e.g. a request to \"api.rory.server.spacebar.chat/api/v9/...\". Everything after " +
-            "\"api.\" and before the next \"/\" is the host to put here. This assumes the instance follows the " +
-            "standard api.<host> / cdn.<host> / gateway.<host> convention - if it doesn't, or this doesn't work, " +
-            "use Custom (Advanced) instead and enter each endpoint separately.",
-        default: "",
-        restartNeeded: true,
-        hidden: () => !isSimple()
+    customServers: {
+        type: OptionType.CUSTOM,
+        description: "User-added custom servers, each with its own id/name/type/endpoints. " +
+            "backend references one of these ids when a custom server (rather than a predefined one) is active.",
+        default: [] as import("./servers").CustomServer[]
     },
-    customApiEndpoint: {
-        type: OptionType.STRING,
-        description: "Custom API endpoint - only used with Custom (Advanced). " +
-            "Include the scheme if your instance needs one (e.g. \"//api.myinstance.example.com/api\" or " +
-            "\"https://myinstance.example.com/api\"). This replaces window.GLOBAL_ENV.API_ENDPOINT verbatim, " +
-            "so match your instance's exact format - some Spacebar instances don't use the api.<host>/api convention.",
-        default: "",
-        restartNeeded: true,
-        hidden: () => !isAdvanced()
+    lastSeenUserId: {
+        type: OptionType.CUSTOM,
+        description: "The user id seen on the last CONNECTION_OPEN. Compared against the incoming user id " +
+            "on each new connection to detect an account switch (persisted, since it needs to survive the " +
+            "reload that happens partway through a switch).",
+        default: ""
     },
-    customCdnHost: {
-        type: OptionType.STRING,
-        description: "Custom CDN host - only used with Custom (Advanced). " +
-            "Just the host, no scheme (e.g. \"cdn.myinstance.example.com\"). Replaces window.GLOBAL_ENV.CDN_HOST verbatim.",
-        default: "",
-        restartNeeded: true,
-        hidden: () => !isAdvanced()
+    accountBackends: {
+        type: OptionType.CUSTOM,
+        description: "Per-account backend map. Keys are Discord user IDs, values are backend ids " +
+            "(a PREDEFINED_SERVERS id, or \"custom-simple\"/\"custom-advanced\"). When set, switching to " +
+            "that account via Discord's own account switcher also switches the backend, followed by a reload.",
+        default: {} as Record<string, string>
     },
-    customGatewayEndpoint: {
-        type: OptionType.STRING,
-        description: "Custom gateway endpoint - only used with Custom (Advanced). " +
-            "Include the wss:// scheme (e.g. \"wss://gateway.myinstance.example.com\"). " +
-            "Replaces window.GLOBAL_ENV.GATEWAY_ENDPOINT verbatim.",
-        default: "",
-        restartNeeded: true,
-        hidden: () => !isAdvanced()
+    useChromiumVideoPlayer: {
+        type: OptionType.BOOLEAN,
+        description: "Use a plain HTML5 video element with the browser's default controls for attachments " +
+            "instead of Discord's real video player component. Discord's player is the default since it looks " +
+            "and behaves like the genuine client, but turn this on if it ever misbehaves on your instance's video URLs.",
+        default: false,
+        restartNeeded: true
     },
-    customMediaProxyEndpoint: {
-        type: OptionType.STRING,
-        description: "Custom media proxy endpoint - only used with Custom (Advanced). " +
-            "Some instances point this at the same host as the CDN (e.g. \"//cdn.myinstance.example.com\"), " +
-            "others use a separate media proxy host - check your instance's own GLOBAL_ENV if unsure. " +
-            "Replaces window.GLOBAL_ENV.MEDIA_PROXY_ENDPOINT verbatim.",
-        default: "",
-        restartNeeded: true,
-        hidden: () => !isAdvanced()
+    legacyGuildOrderSync: {
+        type: OptionType.BOOLEAN,
+        description: "Reposition guilds to match the order saved on the deprecated /users/@me/settings endpoint " +
+            "instead of relying on Discord's native settings-proto sync. Only needed for backends that don't " +
+            "keep settings-proto in sync with legacy settings, like Fermo/Fermi. This fallback path won't be " +
+            "actively maintained going forward, enable at your own risk.",
+        default: false,
+        restartNeeded: true
     },
     clearCache: {
         type: OptionType.COMPONENT,
