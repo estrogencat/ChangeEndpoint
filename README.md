@@ -38,6 +38,8 @@ Channel creation<br>
 Uploading media<br>
 CDN<br>
 Updating username/discriminator/bio/pronouns/PFP/banner<br>
+Status<br>
+Rich presence<br>
 DMs<br>
 Friendship endpoint<br>
 Server rearranging (slightly slow to update if moved on another client)<br>
@@ -51,7 +53,6 @@ VC joining on Desktop client (can join, thinks no permissions are granted. Canno
 
 ### Broken
 
-Status (text and online/idle/whatever)<br>
 Message latency (spacebar issue)<br>
 
 
